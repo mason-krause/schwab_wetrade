@@ -58,6 +58,7 @@ class MultiQuote:
     while self.monitoring_active == True and self.market_hours.market_has_closed() == False:
       await self.client.handle_message()
     await self.client.level_one_equity_unsubs(symbols=self.symbols)
+    await self.client.logout()
     
   def _monitor_quote(self):
     if self.monitoring_active == False:

@@ -30,7 +30,9 @@ class APIClient(Client, StreamClient):
         log_in_background(
           called_from = func_name, 
           url = r.url,
-          r = r)
+          r = r,
+          account_key = kwargs['account_hash'] if 'account_hash' in kwargs else '',
+          symbol = kwargs['symbol'] if 'symbol' in kwargs else '')
         return (parse_response_data(r), r.status_code)
       return r
     return wrap

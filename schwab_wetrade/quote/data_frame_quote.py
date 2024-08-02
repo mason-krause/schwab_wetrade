@@ -70,7 +70,7 @@ class DataFrameQuote(Quote):
     while self.monitoring_active == True and self.market_hours.market_has_closed() == False:
       await self.client.handle_message()
     await self.client.level_one_equity_unsubs(symbols=[self.symbol])
-    # await self.client.logout()
+    await self.client.logout()
 
   def export_data(self):
     '''

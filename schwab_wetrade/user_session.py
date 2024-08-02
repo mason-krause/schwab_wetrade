@@ -19,7 +19,7 @@ def write_token(token, token_path):
       content = {
         'creation_timestamp': int(time.time()),
         'token': token }
-      json.dump(content, f)
+      json.dump(content, f) # not overwriting existing files?
 
 def get_redirect_url(authorize_url, config={}):
   config = settings.config if config == {} else config
@@ -28,7 +28,7 @@ def get_redirect_url(authorize_url, config={}):
     totp = TOTP(config['totp_secret'])
   with sync_playwright() as p:    
     log_in_background(
-      called_from = 'get_text_code',
+      called_from = 'get_redirect_url',
       tags = ['user-message'], 
       message = time.strftime('%H:%M:%S', time.localtime()) + ': Logging in')
     try:
@@ -50,9 +50,10 @@ def get_redirect_url(authorize_url, config={}):
       page.locator('#submit-btn').click()
       page.wait_for_url('https://sws-gateway.schwab.com/ui/host/#/third-party-auth/confirmation')
       page.locator('#cancel-btn').click()
-      time.sleep(1)
-      # page.wait_for_function("() => window.location.href.includes('127.0.0.1')")
-      url = page.evaluate('() => window.location.href')
+      url = ''
+      while '127.0.0.1' not in url:
+        url = page.evaluate('() => window.location.href')
+        time.sleep(.1)
       browser.close()
       log_in_background(
         called_from = 'get_redirect_url',
@@ -62,7 +63,7 @@ def get_redirect_url(authorize_url, config={}):
     except Exception as e: # close browser even if there's an exception
       browser.close()
       log_in_background(
-        called_from = 'get_text_code',
+        called_from = 'get_redirect_url',
         tags = ['user-message'], 
         message = time.strftime('%H:%M:%S', time.localtime()) + ': Login failed',
         e = e)
@@ -71,8 +72,11 @@ def get_redirect_url(authorize_url, config={}):
 def new_session(config={}, new_token=False):
   config = settings.config if config == {} else config
   token_path = settings.token_path if hasattr(settings, 'token_path') else ''
-  token_write_func = lambda token: None if token_path == '' else None
   if new_token == False and token_path and os.path.isfile(token_path):
+    log_in_background(
+      called_from = 'new_session',
+      tags = ['user-message'], 
+      message = time.strftime('%H:%M:%S', time.localtime()) + ': Creating new session from token file')
     client = client_from_token_file(
       token_path=token_path,
       api_key = config['api_key'],
@@ -83,8 +87,7 @@ def new_session(config={}, new_token=False):
       api_key = config['api_key'],
       app_secret = config['api_secret'],
       callback_url = 'https://127.0.0.1',
-      token_path = token_path)#, fix no token path set
-      # token_write_func = lambda token: None if token_path == '' else None)
+      token_path = token_path)
     return client.session
   else:
     client = OAuth2Client(
@@ -151,7 +154,6 @@ class UserSession:
   def handle_request(self, http_method, args, kwargs):
     if self.logged_in:
       url = kwargs['url'] if 'url' in kwargs else ''
-      # r = self.session.request(http_method, *args, **kwargs, timeout=30)
       try:
         r = self.session.request(http_method, *args, **kwargs, timeout=30)
       except authlib_errors.OAuthError as e:
