@@ -53,6 +53,20 @@ class BaseOrder:
       location = r.headers.get('location', '')
       if location != '':
         self.order_id = location.split('/orders/')[1]
+        log_in_background(
+          called_from = 'place_order',
+          tags = ['user-message'], 
+          account_key = self.account.account_key,
+          symbol = self.symbol,
+          message = '{}: Placed {} order to {} {} shares of {} at ${} (Order ID: {}, Account: {})'.format(
+            time.strftime('%H:%M:%S', time.localtime()),
+            self.order_type,
+            self.action,
+            self.quantity,
+            self.symbol,
+            self.price,
+            self.order_id,
+            self.account.account_key[:8]))
         return True
     return False
 
@@ -61,7 +75,7 @@ class BaseOrder:
       self.check_status() # check current status
       self.account.add_order_subscription(self)
       self.subscribed = True
-      start_thread(self.delayed_check_status, args=[5]) # check status again in case something happened while subscribing
+      start_thread(self._delayed_check_status, args=[5]) # check status again in case something happened while subscribing
 
   def cancel_subscription(self):
     self.account.remove_order_subscription(self.order_id, deactivate_monitoring=False)
@@ -71,11 +85,7 @@ class BaseOrder:
     if self.place_order() == True:
       self.create_subscription()
 
-  def cancel_order(self):
-    '''Cancels your active, already-placed order'''
-    # response, status_code = self.client.
-
-  def delayed_check_status(self, delay:int):
+  def _delayed_check_status(self, delay:int):
     time.sleep(delay)
     self.check_status()
 
@@ -88,6 +98,10 @@ class BaseOrder:
       if status == 'EXECUTED':
         self.price = response['price']
       return status
+ 
+  def cancel_order(self):
+    '''Cancels your active, already-placed order'''
+    # response, status_code = self.client.   
     
   def _handle_rejected_order(self):
     log_in_background(
@@ -95,7 +109,7 @@ class BaseOrder:
       tags = ['user-message'], 
       account_key = self.account.account_key,
       symbol = self.symbol,
-      message = '{}: Order {} REJECTED - no longer waiting (Account: {})'.format(time.strftime('%H:%M:%S', time.localtime()), self.order_id, self.account.account_key))
+      message = '{}: Order {} REJECTED - no longer waiting (Account: {})'.format(time.strftime('%H:%M:%S', time.localtime()), self.order_id, self.account.account_key[:8]))
     
   def wait_for_status(self, status, then=None, args=[], kwargs={}):
     '''
@@ -127,6 +141,6 @@ class BaseOrder:
             tags = ['user-message'], 
             account_key = self.account_key,
             symbol = self.symbol,
-            message = '{}: Order # {} {} - no longer waiting (Account: {})'.format(time.strftime('%H:%M:%S', time.localtime()), self.order_id, order_status, self.account_key))
+            message = '{}: Order # {} {} - no longer waiting (Account: {})'.format(time.strftime('%H:%M:%S', time.localtime()), self.order_id, self.status, self.account.account_key[:8]))
           return
       time.sleep(.2)

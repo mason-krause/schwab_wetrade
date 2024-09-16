@@ -163,6 +163,7 @@ class UserSession:
           message = time.strftime('%H:%M:%S', time.localtime()) + ': OAuth error, creating new User Session',
           e = e)
         self.login(new_token=True)
+        return self.handle_request(http_method, args, kwargs)
       except Exception as e:
         # print(e)
         error_num = 0

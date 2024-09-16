@@ -106,7 +106,8 @@ class Account:
     except UnexpectedResponseCode as e:
       # print(e)
       # print('unexpected response, should we retry login?')
-      await sync_to_async(self.client.session.login)(new_token=False)
+      # await sync_to_async(self.client.session.login)(new_token=False)
+      await asyncio.get_event_loop().run_in_executor(None, self.client.session.login, False)
       return await self._stream_account_updates()
     self.client.add_account_activity_handler(handler=self.account_message_handler)
     await self.client.account_activity_sub()
