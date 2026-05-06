@@ -1,5 +1,10 @@
-from .base_order import BaseOrder
+from .basic_order_types import MarketOrder, LimitOrder, StopOrder, StopLimitOrder
+from .multi_order import MultiOrder
 
 
 __all__ = (
-  'BaseOrder')
+  'LimitOrder',
+  'MarketOrder',
+  'StopOrder',
+  'StopLimitOrder',
+  'MultiOrder')

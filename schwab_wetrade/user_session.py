@@ -35,6 +35,7 @@ def get_redirect_url(authorize_url, config={}):
       browser = p.firefox.launch(headless=headless_login)
       page = browser.new_page()
       page.goto(authorize_url)
+      page.wait_for_timeout(1000)
       page.locator('#loginIdInput').fill(config['username'])
       page.locator('#passwordInput').fill(config['password'])
       page.locator('#btnLogin').click()

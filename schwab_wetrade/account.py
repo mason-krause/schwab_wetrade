@@ -2,7 +2,7 @@ import time
 import json
 import asyncio
 from contextlib import suppress
-from asgiref.sync import sync_to_async
+# from asgiref.sync import sync_to_async
 from schwab.streaming import UnexpectedResponseCode
 from schwab_wetrade.api import APIClient
 from schwab_wetrade.utils import log_in_background, start_thread 

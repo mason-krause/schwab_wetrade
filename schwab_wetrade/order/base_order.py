@@ -31,6 +31,9 @@ class BaseOrder:
     self.disable_await_status = False
     self.subscribed = False
 
+  def __str__(self):
+    return f'{self.order_type} Order to {self.action} {self.quantity} shares of {self.symbol} at ${self.price}'
+
   def generate_order_payload(self):
     return {
       'session': 'NORMAL',
@@ -68,6 +71,24 @@ class BaseOrder:
             self.order_id,
             self.account.account_key[:8]))
         return True
+    message = ''
+    with suppress(Exception):
+      message = r.json()['message']
+    log_in_background(
+      called_from = 'place_order',
+      tags = ['user-message'], 
+      account_key = self.account.account_key,
+      symbol = self.symbol_quantities,
+      message = '{}: Error: {} Could not place {} order to {} {} shares of {} at ${} (Order ID: {}, Account: {})'.format(
+        time.strftime('%H:%M:%S', time.localtime()),
+        message,
+        self.order_type,
+        self.action,
+        self.quantity,
+        self.symbol,
+        self.price,
+        self.order_id,
+        self.account.account_key[:8]))
     return False
 
   def create_subscription(self):

@@ -16,7 +16,7 @@ setuptools.setup(
   python_requires = '>=3.7',
   install_requires = [
     'schwab-py',
-    'playwright',
+    'playwright==1.44.0',
     'pyotp',
     'google-cloud-logging', 
     'google-cloud-storage', 
