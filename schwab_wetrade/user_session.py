@@ -1,6 +1,7 @@
 import time
 import os
 import json
+import threading
 import authlib.integrations.base_client.errors as authlib_errors
 from pyotp import TOTP
 from contextlib import suppress
@@ -114,6 +115,8 @@ class UserSession:
     self.config = settings.config if config == {} else config
     self.session = None
     self.logged_in = False
+    self.token_bucket = TokenBucket(capacity=120, refill_rate=2) # 120 requests/min 
+    # self.request_queue = ThreadPoolExecutor(max_workers=4)
     self.login()
 
   def renew_token(self): # doesn't work? 
@@ -152,9 +155,17 @@ class UserSession:
   def put(self, *args, **kwargs):
     return self.handle_request('PUT', args, kwargs)
   
+  # def queue_request(self, http_method, args, kwargs):
+  #   self.resume_event.wait()
+  #   future = self.request_queue.submit(self.handle_request, http_method, args, kwargs)
+  #   wait([future])
+  #   return future.result()
+
   def handle_request(self, http_method, args, kwargs):
     if self.logged_in:
       url = kwargs['url'] if 'url' in kwargs else ''
+      while not self.token_bucket.consume():
+        time.sleep(.5)
       try:
         r = self.session.request(http_method, *args, **kwargs, timeout=30)
       except authlib_errors.OAuthError as e:
@@ -178,4 +189,47 @@ class UserSession:
           message = time.strftime('%H:%M:%S', time.localtime()) + ': Error making request, check logs',
           url = url,
           e = e) 
+      if r.status_code == 429: # Too many requests, wait then replace
+        log_in_background(
+          called_from = 'UserSession.handle_request',
+          tags = ['user-message'], 
+          message = time.strftime('%H:%M:%S', time.localtime()) + ': Too Schwab API requests, pausing requests for 30 sec')
+        self.token_bucket.freeze_refill(30.0) # maybe change bucket.refill_rate instead
+        return self.handle_request(http_method, args, kwargs)
+      if r.status_code == 403: # Access denied; should get a new token
+        log_in_background(
+          called_from = 'UserSession.handle_request',
+          tags = ['user-message'], 
+          message = time.strftime('%H:%M:%S', time.localtime()) + ': API Auth error, resolve with Schwab')
+        # get a new token 
       return r
+
+class TokenBucket:
+  def __init__(self, capacity, refill_rate):
+    self.capacity = capacity
+    self.tokens = capacity
+    self.refill_rate = refill_rate
+    self.last_check = time.time()
+    self.freeze_until = 0
+    self.lock = threading.Lock()
+
+  def _refill(self):
+    now = time.time()
+    if now < self.freeze_until:
+      self.last_check = now
+      return
+    elapsed = now - self.last_check
+    new_tokens = elapsed * self.refill_rate
+    self.tokens = min(self.capacity, self.tokens + new_tokens)
+    self.last_check = now
+
+  def consume(self, tokens=1):
+    with self.lock:
+      self._refill()
+      if self.tokens >= tokens:
+        self.tokens -= tokens
+        return True
+      return False
+  
+  def freeze_refill(self, seconds):
+    self.freeze_until = max(self.freeze_until, time.time() + seconds)
