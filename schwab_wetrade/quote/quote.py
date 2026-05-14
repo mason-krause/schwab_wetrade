@@ -1,5 +1,7 @@
+import pprint
 import time
 import asyncio
+from contextlib import suppress
 from schwab_wetrade.api import APIClient
 from schwab_wetrade.market_hours import MarketHours
 from schwab_wetrade.utils import log_in_background, start_thread
@@ -17,20 +19,28 @@ class Quote:
     self.symbol = symbol
     self.last_price = 0.0
     self.monitoring_active = False
-    self.market_hours = MarketHours(client=self.client)
+    self.market_hours = None
 
   def get_quote(self):
     '''
     Gets the most recent quote details for your security
     '''
-    response, status_code = self.client.get_quote(parsed_response=True, symbol=self.symbol)
+    error_msg = ''
+    if '/' in self.symbol:
+      response, status_code = self.client.get_quotes(parsed_response=True, symbols=[self.symbol])
+    else:
+      response, status_code = self.client.get_quote(parsed_response=True, symbol=self.symbol)
+    with suppress(Exception):
+      error_msg = response['errors'][0]['title']
     if status_code == 200:
       return response
+    elif error_msg == 'Not Found':
+      return {} # maybe error msg instead
     else:
       log_in_background(
         called_from = 'get_quote',
         tags = ['user-message'], 
-        message = time.strftime('%H:%M:%S', time.localtime()) + ': Error getting quote, retrying',
+        message = time.strftime('%H:%M:%S', time.localtime()) + f': Error getting quote for {self.symbol}, retrying',
         symbol = self.symbol)
       time.sleep(.5)
       return self.get_quote()
@@ -42,6 +52,8 @@ class Quote:
     quote = self.get_quote()
     if self.symbol in quote:
       return quote[self.symbol]['quote']['openPrice']
+    else:
+      return 0.0
     
   def get_last_price(self):
     '''
@@ -49,7 +61,10 @@ class Quote:
     '''
     quote = self.get_quote()
     if self.symbol in quote:
-      return quote[self.symbol]['quote']['lastPrice']
+      self.last_price = quote[self.symbol]['quote']['lastPrice']
+      return self.last_price
+    else:
+      return 0.0
 
   async def _stream_quote(self): 
     await self.client.login() # should we move this to APIClient.__init__?
@@ -65,6 +80,8 @@ class Quote:
     await self.client.logout()
     
   def _monitor_quote(self):
+    if self.market_hours == None:
+      self.market_hours = MarketHours(client=self.client)
     if self.monitoring_active == False:
       if self.market_hours.market_has_closed() == False:
         self.monitoring_active = True

@@ -1,5 +1,4 @@
 import time
-import random
 from contextlib import suppress
 from schwab_wetrade.api import APIClient
 from schwab_wetrade.account import Account
@@ -35,11 +34,10 @@ class BaseOrder:
     return f'{self.order_type} Order to {self.action} {self.quantity} shares of {self.symbol} at ${self.price}'
 
   def generate_order_payload(self):
-    return {
+    payload =  {
       'session': 'NORMAL',
       'duration': 'DAY',
       'orderType': self.order_type,
-      'price': self.price,
       'orderLegCollection': [{
         'instruction': self.action,
         'instrument': {
@@ -47,6 +45,9 @@ class BaseOrder:
           'symbol': self.symbol},
         'quantity': self.quantity}],
       'orderStrategyType': 'SINGLE'}
+    if self.price != 0.0:
+      payload['price'] = self.price
+    return payload
   
   def place_order(self):
     '''Places your order'''
@@ -78,7 +79,7 @@ class BaseOrder:
       called_from = 'place_order',
       tags = ['user-message'], 
       account_key = self.account.account_key,
-      symbol = self.symbol_quantities,
+      symbol = self.symbol,
       message = '{}: Error: {} Could not place {} order to {} {} shares of {} at ${} (Order ID: {}, Account: {})'.format(
         time.strftime('%H:%M:%S', time.localtime()),
         message,
@@ -112,13 +113,23 @@ class BaseOrder:
 
   def check_status(self):
     '''Checks the status of an already placed order'''
-    response, status_code = self.client.get_order(parsed_response=True, order_id=self.order_id, account_hash=self.account.account_key)
-    # response, status_code = self.client.get_order(parsed_response=True, order_id=self.order_id, account_hash=self.account.account_key, symbol=self.symbol) can log symbol if update schwab_py.BaseClient.get_order(add * after args) why does parsed_response work though
-    if status_code == 200:
-      status = self.status = response['status']
-      if status == 'EXECUTED':
-        self.price = response['price']
-      return status
+    if self.order_id == 0:
+      log_in_background(
+        called_from = 'check_status',
+        tags = ['user-message'], 
+        account_key = self.account.account_key,
+        symbol = self.symbol,
+        message = '{}: Cannot check status; no order id (Account: {})'.format(time.strftime('%H:%M:%S', time.localtime()), self.account.account_key[:8]))
+    else:
+      response, status_code = self.client.get_order(parsed_response=True, order_id=self.order_id, account_hash=self.account.account_key)
+      # response, status_code = self.client.get_order(parsed_response=True, order_id=self.order_id, account_hash=self.account.account_key, symbol=self.symbol) can log symbol if update schwab_py.BaseClient.get_order(add * after args) why does parsed_response work though
+      if status_code == 200:
+        status = self.status = response['status']
+        if status == 'EXECUTED':
+          self.price = response['price']
+        elif status =='FILLED':
+          self.price = response['orderActivityCollection'][0]['executionLegs'][0]['price']
+        return status
  
   def cancel_order(self):
     '''Cancels your active, already-placed order'''
