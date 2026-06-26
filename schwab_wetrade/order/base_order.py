@@ -51,6 +51,17 @@ class BaseOrder:
   
   def place_order(self):
     '''Places your order'''
+    if self.order_id != 0:
+      log_in_background(
+        called_from = 'place_order',
+        tags = ['user-message'], 
+        account_key = self.account.account_key,
+        symbol = self.symbol,
+        message = '{}: Order already placed (Order ID: {}, Account: {})'.format(
+          time.strftime('%H:%M:%S', time.localtime()),
+          self.order_id,
+          self.account.account_key[:8]))
+      return False
     # response, status_code = self.client.place_order(account_hash=self.account.account_key, order_spec=self.generate_order_payload())
     r = self.client.place_order(account_hash=self.account.account_key, order_spec=self.generate_order_payload())
     if r.status_code == 201:
@@ -106,6 +117,20 @@ class BaseOrder:
   def place_and_subscribe(self):
     if self.place_order() == True:
       self.create_subscription()
+
+  def place_and_update(self, status='', func=None, args=[], kwargs={}):
+    '''
+    Places your order, checks the status after 3 seconds, then optionally calls a callback function that will be called only on certain status  
+    
+    :param status: (optional) run the callback on specified status
+    :param func: (optional) a callback function to run after waiting for status
+    :param list args: a list of args for your function
+    :param dict kwargs: a dict containing kwargs for your function
+    '''
+    if self.place_order() == True:
+      self._delayed_check_status(3)
+    if func and (status == '' or status == self.status):
+      return func(*args, **kwargs) 
 
   def _delayed_check_status(self, delay:int):
     time.sleep(delay)

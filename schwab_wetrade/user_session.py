@@ -116,7 +116,6 @@ class UserSession:
     self.session = None
     self.logged_in = False
     self.token_bucket = TokenBucket(capacity=120, refill_rate=2) # 120 requests/min 
-    # self.request_queue = ThreadPoolExecutor(max_workers=4)
     self.login()
 
   def renew_token(self): # doesn't work? 
@@ -154,12 +153,6 @@ class UserSession:
 
   def put(self, *args, **kwargs):
     return self.handle_request('PUT', args, kwargs)
-  
-  # def queue_request(self, http_method, args, kwargs):
-  #   self.resume_event.wait()
-  #   future = self.request_queue.submit(self.handle_request, http_method, args, kwargs)
-  #   wait([future])
-  #   return future.result()
 
   def handle_request(self, http_method, args, kwargs):
     if self.logged_in:
@@ -189,12 +182,19 @@ class UserSession:
           message = time.strftime('%H:%M:%S', time.localtime()) + ': Error making request, check logs',
           url = url,
           e = e) 
-      if r.status_code == 429: # Too many requests, wait then replace
-        log_in_background(
-          called_from = 'UserSession.handle_request',
-          tags = ['user-message'], 
-          message = time.strftime('%H:%M:%S', time.localtime()) + ': Too Schwab API requests, pausing requests for 30 sec')
-        self.token_bucket.freeze_refill(30.0) # maybe change bucket.refill_rate instead
+      if r.status_code == 429: # Too many requests, pause or slow down traffic
+        if self.token_bucket.refill_rate == 1: # need to keep track of interval or count - might want opause anyway
+          log_in_background(
+            called_from = 'UserSession.handle_request',
+            tags = ['user-message'], 
+            message = time.strftime('%H:%M:%S', time.localtime()) + ': Too Schwab API requests, pausing requests for 30 sec')
+          self.token_bucket.freeze_refill(30.0)
+        else:
+          log_in_background(
+            called_from = 'UserSession.handle_request',
+            tags = ['user-message'], 
+            message = time.strftime('%H:%M:%S', time.localtime()) + ': Too Schwab API requests, slowing request rate')
+          self.token_bucket.refill_rate = 1 # (.75 * self.token_bucket.refill_rate) # runs like 5x in a row, need to keep track of interval since last slowdown
         return self.handle_request(http_method, args, kwargs)
       if r.status_code == 403: # Access denied; should get a new token
         log_in_background(
