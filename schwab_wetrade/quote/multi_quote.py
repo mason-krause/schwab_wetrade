@@ -10,7 +10,7 @@ class MultiQuote:
   An expanded Quote for tracking multiple securities
 
   :param APIClient client: your :ref:`APIClient <api_client>`
-  :param tuple symbols: a tuple containing a list of symbols for up to 25 securities
+  :param tuple symbols: a tuple or list containing a list of symbols
   '''
   def __init__(self, client:APIClient, symbols):
     self.client = client
@@ -20,11 +20,13 @@ class MultiQuote:
     self.monitoring_active = False
     self.market_hours = MarketHours(client=self.client)
 
-  def get_quote(self):
+  def get_quote(self, symbols=[]):
     '''
     Gets the most recent quote details for your securities
     '''
-    response, status_code = self.client.get_quotes(parsed_response=True, symbols=self.symbols)
+    if symbols==[]:
+      symbols=self.symbols[:25]
+    response, status_code = self.client.get_quotes(parsed_response=True, symbols=symbols)
     if status_code == 200:
       return response
     else:
@@ -40,12 +42,21 @@ class MultiQuote:
     '''
     Gets the most recent prices for all of your securities
     '''
-    quote_data = self.get_quote()
-    for symbol in quote_data:
-      self.last_prices[symbol] = quote_data[symbol]['quote']['lastPrice'] 
+    quote_dict = {}
+    for i in range(0, len(self.symbols), 25):
+      batch = self.symbols[i:i+25]
+      batch_data = self.get_quote(batch)
+      quote_dict.update(batch_data)
+    if 'errors' in quote_dict:
+      errors = quote_dict.pop('errors')
+      if 'invalidSymbols' in errors:
+        invalid_symbols = errors['invalidSymbols']
+        self.symbols = [symbol for symbol in self.symbols if symbol not in set(invalid_symbols)]
+    for symbol in quote_dict:
+      self.last_prices[symbol] = quote_dict[symbol]['quote']['lastPrice'] 
     return self.last_prices
 
-  async def _stream_quote(self): 
+  async def _stream_quote(self): # only uses first 25 symbols
     await self.client.login() # should we move this to APIClient.__init__?
     def handler(message):
       nonlocal self
@@ -54,10 +65,10 @@ class MultiQuote:
         if 'LAST_PRICE' in quote:
           self.last_prices[symbol] = quote['LAST_PRICE']
     self.client.add_level_one_equity_handler(handler=handler)
-    await self.client.level_one_equity_subs(symbols=self.symbols)
+    await self.client.level_one_equity_subs(symbols=self.symbols[:25])
     while self.monitoring_active == True and self.market_hours.market_has_closed() == False:
       await self.client.handle_message()
-    await self.client.level_one_equity_unsubs(symbols=self.symbols)
+    await self.client.level_one_equity_unsubs(symbols=self.symbols[:25])
     await self.client.logout()
     
   def _monitor_quote(self):

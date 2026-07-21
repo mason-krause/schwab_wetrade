@@ -36,18 +36,29 @@ def get_redirect_url(authorize_url, config={}):
       browser = p.firefox.launch(headless=headless_login)
       page = browser.new_page()
       page.goto(authorize_url)
-      page.wait_for_timeout(1000)
+      page.wait_for_timeout(800)
       page.locator('#loginIdInput').fill(config['username'])
       page.locator('#passwordInput').fill(config['password'])
+      page.wait_for_timeout(800)
       page.locator('#btnLogin').click()
       if settings.use_2fa == True:
         page.wait_for_url('https://sws-gateway.schwab.com/ui/host/#/placeholder')
         page.locator('#placeholderCode').fill(totp.now())
-        page.locator('#continueButton').click()
+        page.wait_for_timeout(800)
+        page.locator('#continueButton').click(timeout=3000)
       page.wait_for_url('https://sws-gateway.schwab.com/ui/host/#/third-party-auth/cag', timeout=4000)
       page.locator('#acceptTerms').click()
+      page.wait_for_timeout(800)
       page.locator('#submit-btn').click()
-      page.locator('#agree-modal-btn-').click()
+      for i in range(600):
+        if page.url.endswith('/third-party-auth/account'):
+          break
+        try:
+          if page.locator('#agree-modal-btn-').is_visible():
+            page.locator('#agree-modal-btn-').click()
+        except:
+          pass
+        page.wait_for_timeout(100)
       page.wait_for_url('https://sws-gateway.schwab.com/ui/host/#/third-party-auth/account')
       page.locator('#submit-btn').click()
       page.wait_for_url('https://sws-gateway.schwab.com/ui/host/#/third-party-auth/confirmation')
